@@ -139,6 +139,36 @@ body {
 
 #chart { width: 100%; height: auto; display: block; background: #fafafa; border-radius: 8px; }
 
+.chart-story {
+  display: none;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+.chart-story.visible { display: flex; }
+
+.chart-note {
+  font-size: 0.78rem;
+  line-height: 1.55;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border-left: 3px solid var(--line);
+  background: var(--bg);
+  font-weight: 500;
+}
+.chart-note.rise { border-left-color: var(--up); background: var(--up-soft); }
+.chart-note.drop { border-left-color: var(--down); background: var(--down-soft); }
+.chart-note-icon {
+  display: inline-block;
+  font-weight: 900;
+  margin-right: 0.35em;
+  font-size: 0.85rem;
+}
+
+.hint .hint-tag.chart { background: #e3f2fd; color: var(--down); }
+.hint.revealed .hint-tag.chart { background: #bbdefb; color: #0d47a1; }
+.hint-locked { font-size: 0.78rem; color: var(--ink-dim); }
+
 /* ---- Guess grid (Wordle-style) ---- */
 .guess-grid {
   display: flex;

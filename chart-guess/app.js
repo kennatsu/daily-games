@@ -89,8 +89,16 @@
     localStorage.setItem(STATS_KEY, JSON.stringify(stats));
   }
 
-  // ---- チャート描画（SBI/楽天証券風：軸ラベル・100基準線・日本式配色） ----
-  function drawChart(values) {
+  // ---- チャート上に表示するマーカー（解説ヒントが開いた分だけ） ----
+  function getVisibleChartMarkers() {
+    const revealCount = state.done ? puzzle.hints.length : state.guesses.length;
+    return puzzle.hints
+      .slice(0, revealCount)
+      .filter((h) => h.tag === "チャート" && h.index != null);
+  }
+
+  // ---- チャート描画（SBI/楽天証券風 + 変動ポイントマーカー） ----
+  function drawChart(values, markers = []) {
     const svg = document.getElementById("chart");
     const W = 640, H = 380;
     const PL = 56, PR = 48, PT = 14, PB = 36;
@@ -143,6 +151,21 @@
     const lastX = x(values.length - 1);
     const lastY = y(lastVal);
 
+    let eventMarkers = "";
+    markers.forEach((m, idx) => {
+      const cx = x(m.index);
+      const cy = y(values[m.index]);
+      const isDrop = m.moveType === "drop";
+      const mColor = isDrop ? "#1565c0" : "#d32f2f";
+      const label = isDrop ? "↓" : "↑";
+      const labelY = isDrop ? cy + 18 : cy - 12;
+      eventMarkers += `
+        <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${labelY + (isDrop ? -8 : 8)}" stroke="${mColor}" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
+        <circle cx="${cx}" cy="${cy}" r="6" fill="${mColor}" stroke="#fff" stroke-width="2"/>
+        <text x="${cx}" y="${labelY}" text-anchor="middle" fill="${mColor}" font-size="11" font-weight="bold" font-family="sans-serif">${label}${idx + 1}</text>
+      `;
+    });
+
     svg.innerHTML = `
       ${border}
       ${grid}
@@ -152,9 +175,26 @@
       <circle cx="${x(0)}" cy="${y(values[0])}" r="3.5" fill="${color}" stroke="#fff" stroke-width="1.5"/>
       <circle cx="${lastX}" cy="${lastY}" r="5" fill="${color}" stroke="#fff" stroke-width="2"/>
       <text x="${lastX}" y="${lastY - 10}" text-anchor="middle" fill="${color}" font-size="11" font-weight="bold" font-family="sans-serif">${lastVal.toFixed(1)}</text>
+      ${eventMarkers}
       ${yLabels}
       ${xLabels}
     `;
+  }
+
+  function renderChartStory() {
+    const container = document.getElementById("chart-story");
+    const markers = getVisibleChartMarkers();
+    if (!markers.length) {
+      container.innerHTML = "";
+      container.className = "chart-story";
+      return;
+    }
+    container.className = "chart-story visible";
+    container.innerHTML = markers.map((m, i) => {
+      const cls = m.moveType === "drop" ? "drop" : "rise";
+      const icon = m.moveType === "drop" ? "↓" : "↑";
+      return `<div class="chart-note ${cls}"><span class="chart-note-icon">${icon}${i + 1}</span>${escapeHtml(m.text)}</div>`;
+    }).join("");
   }
 
   // ---- 回答グリッド（Wordle風） ----
@@ -186,8 +226,8 @@
       const div = document.createElement("div");
       div.className = "hint" + (i < revealCount ? " revealed" : "");
       div.innerHTML = i < revealCount
-        ? `<span class="hint-tag">${h.tag}</span>${escapeHtml(h.text)}`
-        : `<span class="hint-tag">🔒</span>外すと開放`;
+        ? `<span class="hint-tag ${h.tag === "チャート" ? "chart" : ""}">${escapeHtml(h.tag)}</span>${escapeHtml(h.text)}`
+        : `<span class="hint-tag">🔒 ${i + 1}</span><span class="hint-locked">外すと「${escapeHtml(h.tag)}」が開く</span>`;
       container.appendChild(div);
     });
   }
@@ -306,6 +346,8 @@
   function render() {
     renderGuessGrid();
     renderHints();
+    renderChartStory();
+    drawChart(series, getVisibleChartMarkers());
     const disabled = state.done;
     input.disabled = disabled;
     document.getElementById("btn-submit").disabled = disabled;
@@ -313,7 +355,8 @@
     input.placeholder = disabled ? "本日は終了。明日また！" : `企業名を入力（残り${remaining}回）`;
   }
 
-  drawChart(series);
+  drawChart(series, getVisibleChartMarkers());
+  renderChartStory();
   render();
   if (state.done) showResult();
 })();
