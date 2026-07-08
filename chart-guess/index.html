@@ -4,7 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>チャート当て — 毎日1問、日本株チャートクイズ</title>
-<meta name="description" content="株価チャートの形だけで、どの企業か当てるデイリークイズ。毎日0時に新しい1問。" />
+<meta name="description" content="実際の株価チャートの形だけで、どの日本企業か当てるデイリークイズ。毎日0時（JST）に新しい1問。" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800;900&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -17,29 +20,35 @@
 </header>
 
 <main class="main">
-  <p class="tagline">このチャート、どの企業？　<span id="puzzle-label"></span></p>
+  <div class="daily-bar">
+    <span class="puzzle-no" id="puzzle-label"></span>
+    <span class="countdown" id="countdown"></span>
+  </div>
+  <p class="tagline">このチャート、どの企業？</p>
 
   <section class="chart-card">
     <div class="chart-meta">
-      <span>過去24ヶ月・月足（起点=100で指数化）</span>
+      <span class="chart-badge" id="chart-change"></span>
+      <span class="chart-period">過去24ヶ月・月足</span>
     </div>
     <svg id="chart" viewBox="0 0 640 300" role="img" aria-label="株価チャート"></svg>
   </section>
 
+  <section class="guess-grid" id="guess-grid" aria-label="回答履歴"></section>
+
   <section class="hints" id="hints"></section>
 
   <section class="guess-area">
-    <div class="guess-rows" id="guess-rows"></div>
     <form id="guess-form" autocomplete="off">
       <input
         type="text"
         id="guess-input"
         list="companies"
-        placeholder="企業名を入力（候補から選択）"
+        placeholder="企業名を入力"
         aria-label="企業名を入力"
       />
       <datalist id="companies"></datalist>
-      <button type="submit" class="btn-primary">回答する</button>
+      <button type="submit" class="btn-primary" id="btn-submit">回答</button>
     </form>
   </section>
 </main>
@@ -47,27 +56,28 @@
 <!-- 結果モーダル -->
 <div class="modal-backdrop hidden" id="modal-result">
   <div class="modal">
-    <button class="modal-close" data-close>&times;</button>
+    <button class="modal-close" data-close aria-label="閉じる">&times;</button>
     <h2 id="result-title"></h2>
-    <p class="result-answer">正解: <strong id="result-answer"></strong></p>
+    <p class="result-answer">正解: <strong id="result-answer"></strong> <span class="result-change" id="result-change"></span></p>
     <p class="result-desc" id="result-desc"></p>
     <div class="share-preview" id="share-preview"></div>
-    <button class="btn-primary" id="btn-share">結果をコピーしてシェア</button>
-    <p class="copy-note hidden" id="copy-note">コピーしました！SNSに貼り付けてね</p>
-    <p class="next-note">次の問題は明日0時に更新</p>
+    <button class="btn-primary btn-share" id="btn-share">結果をコピーしてシェア</button>
+    <p class="copy-note hidden" id="copy-note">コピーしました！</p>
+    <p class="next-note">次の問題は <strong>0:00 JST</strong> に更新</p>
   </div>
 </div>
 
 <!-- 遊び方モーダル -->
 <div class="modal-backdrop hidden" id="modal-help">
   <div class="modal">
-    <button class="modal-close" data-close>&times;</button>
+    <button class="modal-close" data-close aria-label="閉じる">&times;</button>
     <h2>遊び方</h2>
     <ul class="help-list">
       <li>株価チャートの<strong>形だけ</strong>を見て、どの日本企業か当てよう。</li>
       <li>チャンスは<strong>6回</strong>。外すたびにヒントが1つ開く。</li>
       <li>ヒントは セクター → 時価総額 → 証券コード → 事業キーワード → 頭文字 の順。</li>
-      <li>毎日0時に新しい1問。結果を絵文字でシェアできるよ。</li>
+      <li>毎日 <strong>0:00 JST</strong> に新しい1問。結果を絵文字でシェアできるよ。</li>
+      <li>チャートは<strong>実際の株価</strong>（月足終値・起点=100で指数化）だよ。</li>
     </ul>
   </div>
 </div>
@@ -75,21 +85,22 @@
 <!-- 成績モーダル -->
 <div class="modal-backdrop hidden" id="modal-stats">
   <div class="modal">
-    <button class="modal-close" data-close>&times;</button>
+    <button class="modal-close" data-close aria-label="閉じる">&times;</button>
     <h2>あなたの成績</h2>
     <div class="stats-grid">
-      <div class="stat"><span class="stat-num" id="stat-played">0</span><span class="stat-label">プレイ数</span></div>
+      <div class="stat"><span class="stat-num" id="stat-played">0</span><span class="stat-label">プレイ</span></div>
       <div class="stat"><span class="stat-num" id="stat-winrate">0%</span><span class="stat-label">正解率</span></div>
-      <div class="stat"><span class="stat-num" id="stat-streak">0</span><span class="stat-label">連続正解</span></div>
-      <div class="stat"><span class="stat-num" id="stat-maxstreak">0</span><span class="stat-label">最長連続</span></div>
+      <div class="stat"><span class="stat-num" id="stat-streak">0</span><span class="stat-label">連続</span></div>
+      <div class="stat"><span class="stat-num" id="stat-maxstreak">0</span><span class="stat-label">最長</span></div>
     </div>
   </div>
 </div>
 
 <footer class="footer">
-  <p>チャートはサンプルデータ（近似値）です。投資助言ではありません。</p>
+  <p>実際の株価データ（<span id="data-asof"></span>時点）・投資助言ではありません</p>
 </footer>
 
+<script src="series.js"></script>
 <script src="puzzles.js"></script>
 <script src="app.js"></script>
 </body>

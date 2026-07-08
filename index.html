@@ -5,44 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>daily-games — 毎日遊べるミニゲーム集</title>
 <meta name="description" content="毎日1問のデイリーブラウザゲーム集。" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;900&display=swap" rel="stylesheet" />
 <style>
-  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    margin: 0;
-    font-family: "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
-    background: #14161c;
-    color: #e8eaf0;
+    font-family: "M PLUS Rounded 1c", "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: #f7f4ed;
+    color: #1a1a1b;
     display: flex;
     min-height: 100vh;
     align-items: center;
     justify-content: center;
   }
-  .wrap { max-width: 480px; padding: 32px 20px; }
-  h1 { font-size: 1.6rem; margin: 0 0 4px; }
-  .sub { color: #9aa1b0; margin: 0 0 28px; font-size: .95rem; }
+  .wrap { max-width: 440px; width: 100%; padding: 32px 20px; }
+  h1 { font-size: 1.8rem; font-weight: 900; margin-bottom: 6px; }
+  h1 .accent { color: #538d4e; }
+  .sub { color: #787c7e; margin-bottom: 28px; font-size: 0.9rem; font-weight: 700; }
   a.game {
     display: block;
-    background: #1d2029;
-    border: 1px solid #2e3340;
+    background: #fff;
+    border: 2px solid #d3d6da;
     border-radius: 12px;
-    padding: 18px 20px;
+    padding: 20px;
     text-decoration: none;
     color: inherit;
-    transition: border-color .15s;
+    transition: border-color 0.15s;
   }
-  a.game:hover { border-color: #4ade80; }
-  .game h2 { margin: 0 0 6px; font-size: 1.15rem; }
-  .game p { margin: 0; color: #9aa1b0; font-size: .9rem; }
-  .badge { color: #4ade80; font-size: .8rem; }
+  a.game:hover { border-color: #6aaa64; }
+  .game h2 { font-size: 1.15rem; font-weight: 900; margin-bottom: 8px; }
+  .badge {
+    color: #538d4e;
+    background: #e8f3e7;
+    border-radius: 6px;
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding: 0.15em 0.5em;
+    margin-left: 0.4em;
+    vertical-align: middle;
+  }
+  .game p { color: #787c7e; font-size: 0.85rem; line-height: 1.65; font-weight: 500; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>daily-games</h1>
+  <h1>daily-<span class="accent">games</span></h1>
   <p class="sub">毎日1問、サクッと遊べるブラウザゲーム集</p>
   <a class="game" href="./chart-guess/">
-    <h2>チャート当て <span class="badge">公開中</span></h2>
-    <p>株価チャートの形だけで、どの日本企業か当てるデイリークイズ。チャンスは6回。</p>
+    <h2>チャート当て<span class="badge">公開中</span></h2>
+    <p>実際の株価チャートの形だけで、どの日本企業か当てるデイリークイズ。チャンスは6回。</p>
   </a>
 </div>
 </body>

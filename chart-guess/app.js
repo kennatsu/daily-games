@@ -2,16 +2,55 @@
   const MAX_GUESSES = 6;
   const STORAGE_KEY = "chart-guess-state";
   const STATS_KEY = "chart-guess-stats";
+  const EPOCH = "2026-07-01"; // 第1問の日付（JST）
 
-  // ---- 今日の問題を決める（日付ベースでローテーション） ----
-  const epoch = new Date(2026, 6, 1); // 2026-07-01 を第1問とする
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dayNumber = Math.max(0, Math.floor((today - epoch) / 86400000));
+  // ---- JST 日付ユーティリティ ----
+  function jstDateStr(d = new Date()) {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(d);
+  }
+
+  function jstDayNumber() {
+    const epoch = new Date(EPOCH + "T00:00:00+09:00");
+    const today = new Date(jstDateStr() + "T00:00:00+09:00");
+    return Math.max(0, Math.floor((today - epoch) / 86400000));
+  }
+
+  function msUntilNextJSTMidnight() {
+    const tomorrow = new Date(jstDateStr() + "T00:00:00+09:00");
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow - Date.now();
+  }
+
+  function formatCountdown(ms) {
+    const h = Math.floor(ms / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+
+  // ---- 今日の問題 ----
+  const dayNumber = jstDayNumber();
   const puzzle = PUZZLES[dayNumber % PUZZLES.length];
+  const series = SERIES[puzzle.ticker];
   const puzzleNo = dayNumber + 1;
 
+  const changePct = (series[series.length - 1] / series[0] - 1) * 100;
+  const changeText = `${changePct >= 0 ? "+" : ""}${changePct.toFixed(1)}%`;
+
   document.getElementById("puzzle-label").textContent = `#${puzzleNo}`;
+  document.getElementById("data-asof").textContent = DATA_ASOF;
+
+  const changeBadge = document.getElementById("chart-change");
+  changeBadge.textContent = changeText;
+  changeBadge.classList.add(changePct >= 0 ? "up" : "down");
+
+  // ---- カウントダウン ----
+  const countdownEl = document.getElementById("countdown");
+  function tickCountdown() {
+    countdownEl.textContent = "次の問題まで " + formatCountdown(msUntilNextJSTMidnight());
+  }
+  tickCountdown();
+  setInterval(tickCountdown, 1000);
 
   // ---- 状態 ----
   const defaultState = { day: dayNumber, guesses: [], done: false, won: false };
@@ -50,37 +89,58 @@
     localStorage.setItem(STATS_KEY, JSON.stringify(stats));
   }
 
-  // ---- チャート描画（SVG折れ線） ----
-  function drawChart(series) {
+  // ---- チャート描画 ----
+  function drawChart(values) {
     const svg = document.getElementById("chart");
-    const W = 640, H = 300, PAD = 24;
-    const min = Math.min(...series), max = Math.max(...series);
+    const W = 640, H = 300, PAD = 28;
+    const min = Math.min(...values), max = Math.max(...values);
     const range = max - min || 1;
-    const x = (i) => PAD + (i / (series.length - 1)) * (W - PAD * 2);
+    const x = (i) => PAD + (i / (values.length - 1)) * (W - PAD * 2);
     const y = (v) => H - PAD - ((v - min) / range) * (H - PAD * 2);
 
-    const up = series[series.length - 1] >= series[0];
-    const color = up ? "#4ade80" : "#f87171";
-    const points = series.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+    const up = values[values.length - 1] >= values[0];
+    const color = up ? "#6aaa64" : "#e74c3c";
+    const points = values.map((v, i) => `${x(i)},${y(v)}`).join(" ");
 
-    // グリッド線
     let grid = "";
     for (let g = 0; g <= 4; g++) {
       const gy = PAD + (g / 4) * (H - PAD * 2);
-      grid += `<line x1="${PAD}" y1="${gy}" x2="${W - PAD}" y2="${gy}" stroke="#2e3340" stroke-width="1"/>`;
+      grid += `<line x1="${PAD}" y1="${gy}" x2="${W - PAD}" y2="${gy}" stroke="#ececec" stroke-width="1"/>`;
     }
 
-    // 塗りつぶしエリア
     const areaPoints = `${PAD},${H - PAD} ${points} ${W - PAD},${H - PAD}`;
+    const lastX = x(values.length - 1);
+    const lastY = y(values[values.length - 1]);
 
     svg.innerHTML = `
       ${grid}
       <polygon points="${areaPoints}" fill="${color}" opacity="0.12"/>
-      <polyline points="${points}" fill="none" stroke="${color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+      <polyline points="${points}" fill="none" stroke="${color}" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${lastX}" cy="${lastY}" r="6" fill="${color}" stroke="#fff" stroke-width="2"/>
     `;
   }
 
-  // ---- ヒント表示 ----
+  // ---- 回答グリッド（Wordle風） ----
+  function renderGuessGrid() {
+    const container = document.getElementById("guess-grid");
+    container.innerHTML = "";
+    for (let i = 0; i < MAX_GUESSES; i++) {
+      const row = document.createElement("div");
+      if (i < state.guesses.length) {
+        const correct = isCorrect(state.guesses[i]);
+        row.className = "guess-row " + (correct ? "correct" : "wrong");
+        row.innerHTML = `<span class="guess-dot ${correct ? "correct" : "wrong"}"></span><span class="guess-text">${escapeHtml(state.guesses[i])}</span>`;
+      } else if (!state.done) {
+        row.className = "guess-row empty";
+        row.textContent = i === state.guesses.length ? "ここに回答が入る" : "";
+      } else {
+        continue;
+      }
+      container.appendChild(row);
+    }
+  }
+
+  // ---- ヒント ----
   function renderHints() {
     const container = document.getElementById("hints");
     container.innerHTML = "";
@@ -89,22 +149,9 @@
       const div = document.createElement("div");
       div.className = "hint" + (i < revealCount ? " revealed" : "");
       div.innerHTML = i < revealCount
-        ? `<span class="hint-tag">ヒント${i + 1}｜${h.tag}</span>${escapeHtml(h.text)}`
-        : `<span class="hint-tag">ヒント${i + 1}</span>🔒 外すと開放`;
+        ? `<span class="hint-tag">${h.tag}</span>${escapeHtml(h.text)}`
+        : `<span class="hint-tag">🔒</span>外すと開放`;
       container.appendChild(div);
-    });
-  }
-
-  // ---- 回答履歴表示 ----
-  function renderGuesses() {
-    const container = document.getElementById("guess-rows");
-    container.innerHTML = "";
-    state.guesses.forEach((g) => {
-      const row = document.createElement("div");
-      const correct = isCorrect(g);
-      row.className = "guess-row " + (correct ? "correct" : "wrong");
-      row.innerHTML = `<span class="mark">${correct ? "🟩" : "🟥"}</span><span>${escapeHtml(g)}</span>`;
-      container.appendChild(row);
     });
   }
 
@@ -120,25 +167,27 @@
     return puzzle.aliases.some((a) => normalize(a) === n);
   }
 
-  // ---- シェアテキスト生成 ----
+  // ---- シェア ----
   function buildShareText() {
-    const rows = state.guesses.map((g) => (isCorrect(g) ? "🟩" : "🟥")).join("");
+    const rows = state.guesses.map((g) => (isCorrect(g) ? "🟩" : "⬜")).join("");
     const score = state.won ? `${state.guesses.length}/${MAX_GUESSES}` : `X/${MAX_GUESSES}`;
     return `チャート当て #${puzzleNo} ${score}\n${rows}\n${location.href}`;
   }
 
-  // ---- 結果モーダル ----
+  // ---- モーダル ----
   function showResult() {
     document.getElementById("result-title").textContent = state.won
-      ? `正解！ ${state.guesses.length}回目で当てました 🎉`
-      : "残念…また明日挑戦！";
+      ? `${state.guesses.length}回目で正解！ 🎉`
+      : "残念…また明日！";
     document.getElementById("result-answer").textContent = puzzle.answer;
+    const change = document.getElementById("result-change");
+    change.textContent = `（${changeText}）`;
+    change.className = "result-change " + (changePct >= 0 ? "up" : "down");
     document.getElementById("result-desc").textContent = puzzle.desc;
     document.getElementById("share-preview").textContent = buildShareText();
     openModal("modal-result");
   }
 
-  // ---- 成績モーダル ----
   function showStats() {
     const s = loadStats();
     document.getElementById("stat-played").textContent = s.played;
@@ -148,7 +197,6 @@
     openModal("modal-stats");
   }
 
-  // ---- モーダル共通 ----
   function openModal(id) {
     document.getElementById(id).classList.remove("hidden");
   }
@@ -162,7 +210,7 @@
   document.getElementById("btn-help").addEventListener("click", () => openModal("modal-help"));
   document.getElementById("btn-stats").addEventListener("click", showStats);
 
-  // ---- 入力処理 ----
+  // ---- 入力 ----
   const form = document.getElementById("guess-form");
   const input = document.getElementById("guess-input");
   const datalist = document.getElementById("companies");
@@ -196,7 +244,7 @@
     saveState();
     input.value = "";
     render();
-    if (state.done) setTimeout(showResult, 400);
+    if (state.done) setTimeout(showResult, 500);
   });
 
   document.getElementById("btn-share").addEventListener("click", async () => {
@@ -204,7 +252,6 @@
       await navigator.clipboard.writeText(buildShareText());
       document.getElementById("copy-note").classList.remove("hidden");
     } catch (_) {
-      // クリップボード不可の環境ではテキスト選択にフォールバック
       const range = document.createRange();
       range.selectNodeContents(document.getElementById("share-preview"));
       const sel = getSelection();
@@ -213,7 +260,6 @@
     }
   });
 
-  // ---- util ----
   function escapeHtml(s) {
     const div = document.createElement("div");
     div.textContent = s;
@@ -221,15 +267,16 @@
   }
 
   function render() {
+    renderGuessGrid();
     renderHints();
-    renderGuesses();
     const disabled = state.done;
     input.disabled = disabled;
-    form.querySelector("button").disabled = disabled;
-    input.placeholder = disabled ? "本日は終了。また明日！" : `企業名を入力（残り${MAX_GUESSES - state.guesses.length}回）`;
+    document.getElementById("btn-submit").disabled = disabled;
+    const remaining = MAX_GUESSES - state.guesses.length;
+    input.placeholder = disabled ? "本日は終了。明日また！" : `企業名を入力（残り${remaining}回）`;
   }
 
-  drawChart(puzzle.series);
+  drawChart(series);
   render();
   if (state.done) showResult();
 })();
