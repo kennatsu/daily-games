@@ -4,6 +4,12 @@
   const STATS_KEY = "chart-guess-stats";
   const HELP_KEY = "chart-guess-seen-help";
   const EPOCH = "2026-07-01";
+  const REDUCE_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function sleep(ms) {
+    if (REDUCE_MOTION) return Promise.resolve();
+    return new Promise((r) => setTimeout(r, ms));
+  }
 
   // ---- JST 日付 ----
   function jstDateStr(d = new Date()) {
@@ -174,7 +180,7 @@
   }
 
   // ---- チャート描画 ----
-  function drawChart(values, markers = []) {
+  function drawChart(values, markers = [], opts = {}) {
     const svg = document.getElementById("chart");
     const W = 640, H = 380;
     const PL = 56, PR = 48, PT = 14, PB = 36;
@@ -194,6 +200,7 @@
     const x = (i) => PL + (i / (values.length - 1)) * cW;
     const y = (v) => PT + cH - ((v - yMin) / yRange) * cH;
     const points = values.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+    const pathLen = 1200;
 
     let grid = "";
     let yLabels = "";
@@ -226,6 +233,10 @@
     const lastX = x(values.length - 1);
     const lastY = y(lastVal);
 
+    const drawLine = opts.drawLine
+      ? `<polyline class="chart-line-draw" points="${points}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="${pathLen}" stroke-dashoffset="${pathLen}"/>`
+      : `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+
     let eventMarkers = "";
     markers.forEach((m, idx) => {
       const cx = x(m.index);
@@ -234,17 +245,20 @@
       const mColor = isDrop ? "#1565c0" : "#d32f2f";
       const label = isDrop ? "↓" : "↑";
       const labelY = isDrop ? cy + 18 : cy - 12;
+      const isNew = opts.newMarkerIdx === idx;
       eventMarkers += `
-        <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${labelY + (isDrop ? -8 : 8)}" stroke="${mColor}" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
-        <circle cx="${cx}" cy="${cy}" r="6" fill="${mColor}" stroke="#fff" stroke-width="2"/>
-        <text x="${cx}" y="${labelY}" text-anchor="middle" fill="${mColor}" font-size="11" font-weight="bold" font-family="sans-serif">${label}${idx + 1}</text>
+        <g class="chart-marker${isNew ? " marker-pop" : ""}">
+          <line x1="${cx}" y1="${cy}" x2="${cx}" y2="${labelY + (isDrop ? -8 : 8)}" stroke="${mColor}" stroke-width="1.5" stroke-dasharray="3,2" opacity="0.7"/>
+          <circle cx="${cx}" cy="${cy}" r="6" fill="${mColor}" stroke="#fff" stroke-width="2"/>
+          <text x="${cx}" y="${labelY}" text-anchor="middle" fill="${mColor}" font-size="11" font-weight="bold" font-family="sans-serif">${label}${idx + 1}</text>
+        </g>
       `;
     });
 
     svg.innerHTML = `
       ${border}${grid}${baseline}
       <polygon points="${areaPoints}" fill="${color}" opacity="0.06"/>
-      <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      ${drawLine}
       <circle cx="${x(0)}" cy="${y(values[0])}" r="3.5" fill="${color}" stroke="#fff" stroke-width="1.5"/>
       <circle cx="${lastX}" cy="${lastY}" r="5" fill="${color}" stroke="#fff" stroke-width="2"/>
       <text x="${lastX}" y="${lastY - 10}" text-anchor="middle" fill="${color}" font-size="11" font-weight="bold" font-family="sans-serif">${lastVal.toFixed(1)}</text>
@@ -252,7 +266,7 @@
     `;
   }
 
-  function renderChartStory() {
+  function renderChartStory(newNoteIdx = -1) {
     const container = document.getElementById("chart-story");
     const markers = getVisibleChartMarkers();
     if (!markers.length) {
@@ -264,12 +278,13 @@
     container.innerHTML = markers.map((m, i) => {
       const cls = m.moveType === "drop" ? "drop" : "rise";
       const icon = m.moveType === "drop" ? "↓" : "↑";
-      return `<div class="chart-note ${cls}"><span class="chart-note-icon">${icon}${i + 1}</span>${escapeHtml(m.text)}</div>`;
+      const noteCls = i === newNoteIdx ? " chart-note-new" : "";
+      return `<div class="chart-note ${cls}${noteCls}"><span class="chart-note-icon">${icon}${i + 1}</span>${escapeHtml(m.text)}</div>`;
     }).join("");
   }
 
   // ---- 回答グリッド（Wordle 6行 + Tradle フィードバック） ----
-  function renderGuessGrid() {
+  function renderGuessGrid(hideFeedback = false) {
     const container = document.getElementById("guess-grid");
     container.innerHTML = "";
     for (let i = 0; i < MAX_GUESSES; i++) {
@@ -278,10 +293,16 @@
         const guessRaw = state.guesses[i];
         const canonical = resolveCompany(guessRaw) || guessRaw;
         const correct = isCorrect(guessRaw);
-        row.className = "guess-row " + (correct ? "correct" : "wrong");
-        if (correct) {
+        const isPending = hideFeedback && i === state.guesses.length - 1;
+
+        if (isPending) {
+          row.className = "guess-row pending";
+          row.innerHTML = `<span class="guess-dot pending"></span><div class="guess-body"><span class="guess-text">${escapeHtml(canonical)}</span></div>`;
+        } else if (correct) {
+          row.className = "guess-row correct";
           row.innerHTML = `<span class="guess-dot correct"></span><div class="guess-body"><span class="guess-text">${escapeHtml(canonical)}</span></div>`;
         } else {
+          row.className = "guess-row wrong";
           const fb = computeFeedback(canonical);
           const pills = fb
             ? fb.pills.map((p) => `<span class="fb-pill ${p.cls}">${escapeHtml(p.text)}</span>`).join("")
@@ -301,18 +322,67 @@
     }
   }
 
-  function renderHints() {
+  function renderHints(unlockIdx = -1) {
     const container = document.getElementById("hints");
     container.innerHTML = "";
     const revealCount = state.done ? puzzle.hints.length : state.guesses.length;
     puzzle.hints.forEach((h, i) => {
       const div = document.createElement("div");
-      div.className = "hint" + (i < revealCount ? " revealed" : "");
-      div.innerHTML = i < revealCount
+      const revealed = i < revealCount;
+      div.className = "hint" + (revealed ? " revealed" : "") + (i === unlockIdx ? " hint-unlock" : "");
+      div.innerHTML = revealed
         ? `<span class="hint-tag ${h.tag === "チャート" ? "chart" : ""}">${escapeHtml(h.tag)}</span>${escapeHtml(h.text)}`
         : `<span class="hint-tag">🔒 ${i + 1}</span><span class="hint-locked">外すと「${escapeHtml(h.tag)}」が開く</span>`;
       container.appendChild(div);
     });
+  }
+
+  // ---- アニメーション ----
+  async function playGuessAnimation(rowIdx, correct) {
+    const row = document.getElementById("guess-grid")?.children[rowIdx];
+    if (!row || REDUCE_MOTION) return;
+
+    row.classList.add("anim-pop");
+    await sleep(280);
+
+    row.classList.add("anim-reveal", correct ? "anim-correct" : "anim-wrong");
+    if (correct) {
+      row.classList.remove("pending");
+      row.classList.add("correct");
+      row.querySelector(".guess-dot")?.classList.replace("pending", "correct");
+      document.querySelector(".chart-card")?.classList.add("win-pulse");
+      await sleep(520);
+    } else {
+      row.classList.remove("pending");
+      row.classList.add("wrong");
+      await sleep(320);
+      row.classList.add("anim-shake");
+      await sleep(420);
+      renderGuessGrid(false);
+      const updated = document.getElementById("guess-grid")?.children[rowIdx];
+      updated?.classList.add("anim-pop", "anim-reveal", "anim-wrong", "anim-shake", "anim-pills");
+      await sleep(280);
+    }
+  }
+
+  async function playHintUnlock(hintIdx) {
+    const markers = getVisibleChartMarkers();
+    let newMarkerIdx = -1;
+    if (puzzle.hints[hintIdx]?.tag === "チャート") {
+      newMarkerIdx = markers.length - 1;
+    }
+
+    renderHints(hintIdx);
+    const hintEl = document.getElementById("hints")?.children[hintIdx];
+    hintEl?.scrollIntoView({ behavior: REDUCE_MOTION ? "auto" : "smooth", block: "nearest" });
+
+    const newNoteIdx = puzzle.hints[hintIdx]?.tag === "チャート"
+      ? markers.length - 1
+      : -1;
+    renderChartStory(newNoteIdx >= 0 ? newNoteIdx : -1);
+    drawChart(series, markers, { newMarkerIdx: newMarkerIdx >= 0 ? newMarkerIdx : undefined });
+
+    if (!REDUCE_MOTION) await sleep(450);
   }
 
   // ---- シェア ----
@@ -358,12 +428,17 @@
   }
 
   function openModal(id) {
-    document.getElementById(id).classList.remove("hidden");
+    const bd = document.getElementById(id);
+    bd.classList.remove("hidden");
+    bd.querySelector(".modal")?.classList.add("modal-pop");
   }
 
   document.querySelectorAll(".modal-backdrop").forEach((bd) => {
     bd.addEventListener("click", (e) => {
-      if (e.target === bd || e.target.hasAttribute("data-close")) bd.classList.add("hidden");
+      if (e.target === bd || e.target.hasAttribute("data-close")) {
+        bd.classList.add("hidden");
+        bd.querySelector(".modal")?.classList.remove("modal-pop");
+      }
     });
   });
 
@@ -450,9 +525,11 @@
   });
 
   // ---- 回答送信 ----
-  form.addEventListener("submit", (e) => {
+  let animating = false;
+
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (state.done) return;
+    if (state.done || animating) return;
     const raw = input.value.trim();
     if (!raw) return;
 
@@ -471,10 +548,18 @@
       return;
     }
 
+    animating = true;
+    input.disabled = true;
+    document.getElementById("btn-submit").disabled = true;
+
     state.guesses.push(raw);
     acList.classList.remove("open");
 
-    if (isCorrect(raw)) {
+    const rowIdx = state.guesses.length - 1;
+    const correct = isCorrect(raw);
+    const hintIdx = rowIdx;
+
+    if (correct) {
       state.done = true;
       state.won = true;
       recordResult(true);
@@ -486,8 +571,16 @@
 
     saveState();
     input.value = "";
+
+    renderGuessGrid(true);
+    await playGuessAnimation(rowIdx, correct);
+
+    renderGuessGrid(false);
+    await playHintUnlock(hintIdx);
+
+    animating = false;
     render();
-    if (state.done) setTimeout(showResult, 600);
+    if (state.done) setTimeout(showResult, REDUCE_MOTION ? 100 : 350);
   });
 
   document.getElementById("btn-share").addEventListener("click", async () => {
@@ -510,15 +603,15 @@
   }
 
   function render() {
-    renderGuessGrid();
-    renderHints();
-    renderChartStory();
+    renderGuessGrid(false);
+    renderHints(-1);
+    renderChartStory(-1);
     drawChart(series, getVisibleChartMarkers());
-    const disabled = state.done;
+    const disabled = state.done || animating;
     input.disabled = disabled;
     document.getElementById("btn-submit").disabled = disabled;
     const remaining = MAX_GUESSES - state.guesses.length;
-    input.placeholder = disabled ? "本日は終了。明日また！" : `企業名を入力（残り${remaining}回）`;
+    input.placeholder = state.done ? "本日は終了。明日また！" : `企業名を入力（残り${remaining}回）`;
   }
 
   // ---- 初回ヘルプ ----
@@ -527,8 +620,8 @@
     setTimeout(() => openModal("modal-help"), 400);
   }
 
-  drawChart(series, getVisibleChartMarkers());
-  renderChartStory();
+  drawChart(series, getVisibleChartMarkers(), { drawLine: !REDUCE_MOTION });
+  renderChartStory(-1);
   render();
   if (state.done) showResult();
 })();
